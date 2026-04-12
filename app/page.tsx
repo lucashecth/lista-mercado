@@ -7,7 +7,7 @@ export default function Home() {
       
       <div className="flex flex-col gap-4 w-full max-w-xs">
         <Link 
-          href="/lista" 
+          href="/listas" 
           className="bg-blue-600 text-white p-4 rounded-xl text-center font-semibold shadow-lg active:scale-95 transition-transform"
         >
           Minha Lista
