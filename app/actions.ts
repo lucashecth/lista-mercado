@@ -4,18 +4,29 @@ import { GoogleSpreadsheet } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
 import { revalidatePath } from 'next/cache';
 
+// Função para limpar a chave independente de como o Vercel entregue ela
+const formatarChave = (chave?: string) => {
+  if (!chave) return '';
+  // Remove aspas duplas do começo e do fim (se existirem) e força os \n
+  return chave.replace(/^"|"$/g, '').replace(/\\n/g, '\n');
+};
+
 const jwt = new JWT({
   email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-  key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+  key: formatarChave(process.env.GOOGLE_PRIVATE_KEY),
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 
 async function conectar() {
-  const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID!, jwt);
-  await doc.loadInfo();
-  return doc;
+  try {
+    const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID!, jwt);
+    await doc.loadInfo();
+    return doc;
+  } catch (error) {
+    console.error("FALHA CRÍTICA DE AUTENTICAÇÃO COM O GOOGLE:", error);
+    throw new Error("Falha ao conectar no Google Sheets");
+  }
 }
-
 // --- FUNÇÕES DA LISTA BASE ---
 
 export async function buscarListaBase() {
