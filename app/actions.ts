@@ -4,10 +4,8 @@ import { GoogleSpreadsheet } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
 import { revalidatePath } from 'next/cache';
 
-// Função para limpar a chave independente de como o Vercel entregue ela
 const formatarChave = (chave?: string) => {
   if (!chave) return '';
-  // Remove aspas duplas do começo e do fim (se existirem) e força os \n
   return chave.replace(/^"|"$/g, '').replace(/\\n/g, '\n');
 };
 
@@ -18,14 +16,9 @@ const jwt = new JWT({
 });
 
 async function conectar() {
-  try {
-    const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID!, jwt);
-    await doc.loadInfo();
-    return doc;
-  } catch (error) {
-    console.error("FALHA CRÍTICA DE AUTENTICAÇÃO COM O GOOGLE:", error);
-    throw new Error("Falha ao conectar no Google Sheets");
-  }
+  const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID!, jwt);
+  await doc.loadInfo();
+  return doc;
 }
 // --- FUNÇÕES DA LISTA BASE ---
 
@@ -83,17 +76,18 @@ export async function iniciarMercadoAction() {
   if (!mercadoSheet) {
     mercadoSheet = await doc.addSheet({ 
       title: nomeAba, 
-      headerValues: ['Id', 'Item', 'Comprado', 'Preco', 'Qtd', 'Total'] 
+      headerValues: ['Id', 'Item', 'Comprado', 'Preco', 'Qtd', 'Total', 'Mercado', 'Finalizado'] 
     });
     
-    // Copia os itens da lista base para a nova aba mensal
     const novosDados = itens.map(i => ({
       Id: i.get('Id'),
       Item: i.get('Item'),
       Comprado: 'NÃO',
       Preco: '0',
       Qtd: '0',
-      Total: '0'
+      Total: '0',
+      Mercado: '',
+      Finalizado: 'NÃO'
     }));
     await mercadoSheet.addRows(novosDados);
   }
@@ -101,6 +95,8 @@ export async function iniciarMercadoAction() {
   const rows = await mercadoSheet.getRows();
   return {
     nomeAba,
+    mercadoNome: rows[0]?.get('Mercado') || '',
+    finalizado: rows[0]?.get('Finalizado') === 'SIM',
     itens: rows.map(r => ({
       id: r.get('Id'),
       nome: r.get('Item'),
@@ -111,16 +107,30 @@ export async function iniciarMercadoAction() {
   };
 }
 
-export async function atualizarCompraAction(aba: string, id: string, dados: { comprado: boolean, preco: number, qtd: number }) {
+export async function atualizarCompraAction(aba: string, id: string, dados: any) {
   const doc = await conectar();
   const sheet = doc.sheetsByTitle[aba];
   const rows = await sheet.getRows();
   const row = rows.find(r => r.get('Id') === id);
+  
   if (row) {
     row.set('Comprado', dados.comprado ? 'SIM' : 'NÃO');
-    row.set('Preco', dados.preco);
-    row.set('Qtd', dados.qtd);
-    row.set('Total', (dados.preco * dados.qtd).toFixed(2));
+    row.set('Preco', dados.preco || 0);
+    row.set('Qtd', dados.qtd || 0);
+    row.set('Total', ((dados.preco || 0) * (dados.qtd || 0)).toFixed(2));
+    if (dados.mercadoNome !== undefined) row.set('Mercado', dados.mercadoNome);
+    await row.save();
+  }
+}
+
+export async function finalizarCompraAction(aba: string, mercadoNome: string) {
+  const doc = await conectar();
+  const sheet = doc.sheetsByTitle[aba];
+  const rows = await sheet.getRows();
+  
+  for (const row of rows) {
+    row.set('Finalizado', 'SIM');
+    row.set('Mercado', mercadoNome);
     await row.save();
   }
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Trash2, ArrowUp, ArrowDown, Plus, Loader2 } from "lucide-react";
+import { Trash2, ArrowUp, ArrowDown, Plus, Loader2, ArrowLeft } from "lucide-react";
+import Link from "next/link";
 import { buscarListaBase, adicionarItemBase, removerItemBase, reordenarItensBase } from "../actions";
 
 export default function ListaView() {
@@ -47,6 +48,12 @@ export default function ListaView() {
 
   return (
     <main className="min-h-screen bg-slate-50 p-4 pb-20">
+      <div className="flex items-center gap-4 mb-6">
+        <Link href="/" className="p-2 bg-white rounded-full shadow-sm text-slate-600">
+          <ArrowLeft size={24} />
+        </Link>
+        <h1 className="text-2xl font-black text-slate-800">Minha Lista Base</h1>
+      </div>
       <h1 className="text-2xl font-black text-slate-800 mb-6">Minha Lista Base</h1>
       
       <div className="flex gap-2 mb-6 sticky top-4 z-20">
