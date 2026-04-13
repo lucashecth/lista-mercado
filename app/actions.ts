@@ -102,7 +102,8 @@ export async function iniciarMercadoAction() {
       nome: r.get('Item'),
       comprado: r.get('Comprado') === 'SIM',
       preco: Number(r.get('Preco')) || 0,
-      qtd: Number(r.get('Qtd')) || 0
+      qtd: r.get('Qtd') || '0', // Agora pode ser texto (ex: "0.5kg")
+      total: Number(r.get('Total')?.toString().replace(',', '.')) || 0 // Puxa o total real
     }))
   };
 }
@@ -117,7 +118,8 @@ export async function atualizarCompraAction(aba: string, id: string, dados: any)
     row.set('Comprado', dados.comprado ? 'SIM' : 'NÃO');
     row.set('Preco', dados.preco || 0);
     row.set('Qtd', dados.qtd || 0);
-    row.set('Total', ((dados.preco || 0) * (dados.qtd || 0)).toFixed(2));
+    // Em vez de multiplicar aqui, salvamos o total exato que a tela calculou/recebeu
+    row.set('Total', dados.total !== undefined ? dados.total : 0);
     if (dados.mercadoNome !== undefined) row.set('Mercado', dados.mercadoNome);
     await row.save();
   }
