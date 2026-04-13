@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Check, X, Loader2, ShoppingCart, ArrowLeft, Store, Scale } from "lucide-react";
+import { Check, X, Loader2, ShoppingCart, ArrowLeft, Store, Scale, Search } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image"; // Deixei importado caso você adicione o logo na pasta public
 import { iniciarMercadoAction, atualizarCompraAction, finalizarCompraAction } from "../actions";
 
 export default function EstouNoMercadoView() {
@@ -12,7 +11,10 @@ export default function EstouNoMercadoView() {
   const [selecionado, setSelecionado] = useState<any>(null);
   const [confirmarFinalizacao, setConfirmarFinalizacao] = useState(false);
   
-  // Novos estados para o Modal
+  // Estado da Busca Incremental
+  const [busca, setBusca] = useState("");
+  
+  // Estados para o Modal
   const [modoModal, setModoModal] = useState<'QTD' | 'PESO'>('QTD');
   const [form, setForm] = useState({ preco: "", qtd: "1", peso: "", valorTotal: "" });
 
@@ -46,12 +48,12 @@ export default function EstouNoMercadoView() {
     if (modoModal === 'QTD') {
       precoSave = parseFloat(form.preco.replace(',', '.')) || 0;
       const qtdNumerica = parseFloat(form.qtd.replace(',', '.')) || 1;
-      qtdSave = qtdNumerica.toString(); // Ex: "2"
-      totalSave = precoSave * qtdNumerica; // Multiplica normalmente
+      qtdSave = qtdNumerica.toString(); 
+      totalSave = precoSave * qtdNumerica; 
     } else {
       totalSave = parseFloat(form.valorTotal.replace(',', '.')) || 0;
-      qtdSave = form.peso ? form.peso : "1 un"; // Salva o peso para sabermos na planilha
-      precoSave = totalSave; // Apenas de referência
+      qtdSave = form.peso ? form.peso : "1 un"; 
+      precoSave = totalSave; 
     }
 
     const novosItens = sessao!.itens.map(i => 
@@ -68,6 +70,7 @@ export default function EstouNoMercadoView() {
     });
     
     setSelecionado(null);
+    setBusca(""); // Limpa a busca após adicionar o item, facilitando o próximo
   };
 
   const finalizarCompra = async () => {
@@ -78,8 +81,12 @@ export default function EstouNoMercadoView() {
     setCarregando(false);
   };
 
-  // Soma usando o total direto de cada item
   const total = sessao?.itens.reduce((acc, i) => acc + (i.total || 0), 0) || 0;
+
+  // LÓGICA DE FILTRO: Só renderiza os itens que baterem com o texto da busca
+  const itensFiltrados = sessao?.itens.filter(item => 
+    item.nome.toLowerCase().includes(busca.toLowerCase())
+  ) || [];
 
   if (!sessao) {
     return (
@@ -94,7 +101,9 @@ export default function EstouNoMercadoView() {
 
   return (
     <main className="min-h-screen bg-slate-50 p-4 pb-40">
-      <div className="flex items-center gap-4 mb-6">
+      
+      {/* HEADER EXISTENTE */}
+      <div className="flex items-center gap-4 mb-4">
         <Link href="/" className="p-2 bg-white rounded-full shadow-sm text-slate-600">
           <ArrowLeft size={24} />
         </Link>
@@ -113,38 +122,64 @@ export default function EstouNoMercadoView() {
         </div>
       </div>
 
+      {/* NOVA BARRA DE BUSCA INCREMENTAL */}
+      <div className="relative mb-6 sticky top-4 z-10">
+        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+          <Search size={20} className="text-slate-400" />
+        </div>
+        <input
+          type="text"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar produto..."
+          className="w-full bg-white py-4 pl-12 pr-4 rounded-2xl border-none shadow-sm text-slate-700 font-medium focus:ring-2 focus:ring-green-500 transition-shadow"
+        />
+        {/* Botão para limpar a busca rapidamente */}
+        {busca && (
+          <button onClick={() => setBusca("")} className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600">
+            <X size={20} />
+          </button>
+        )}
+      </div>
+
+      {/* LISTA DE ITENS (Agora usando itensFiltrados em vez de sessao.itens) */}
       <div className="space-y-3">
-        {sessao.itens.map(item => (
-          <div 
-            key={item.id} 
-            onClick={() => toggleItem(item)}
-            className={`flex items-center p-4 rounded-2xl border-2 transition-all ${item.comprado ? 'bg-green-50 border-green-200' : 'bg-white border-white shadow-sm'}`}
-          >
-            <div className={`w-6 h-6 rounded-full border-2 mr-4 flex items-center justify-center shrink-0 ${item.comprado ? 'bg-green-500 border-green-500' : 'border-slate-200'}`}>
-              {item.comprado && <Check size={14} className="text-white" />}
-            </div>
-            
-            <div className={`flex-1 flex flex-col ${item.comprado ? 'opacity-50' : ''}`}>
-              <span className={`font-bold ${item.comprado ? 'text-green-800 line-through' : 'text-slate-700'}`}>{item.nome}</span>
+        {itensFiltrados.length === 0 ? (
+          <div className="text-center py-10 text-slate-400 font-medium">
+            Nenhum produto encontrado.
+          </div>
+        ) : (
+          itensFiltrados.map(item => (
+            <div 
+              key={item.id} 
+              onClick={() => toggleItem(item)}
+              className={`flex items-center p-4 rounded-2xl border-2 transition-all ${item.comprado ? 'bg-green-50 border-green-200' : 'bg-white border-white shadow-sm'}`}
+            >
+              <div className={`w-6 h-6 rounded-full border-2 mr-4 flex items-center justify-center shrink-0 ${item.comprado ? 'bg-green-500 border-green-500' : 'border-slate-200'}`}>
+                {item.comprado && <Check size={14} className="text-white" />}
+              </div>
+              
+              <div className={`flex-1 flex flex-col ${item.comprado ? 'opacity-50' : ''}`}>
+                <span className={`font-bold ${item.comprado ? 'text-green-800 line-through' : 'text-slate-700'}`}>{item.nome}</span>
+                {item.comprado && (
+                  <span className="text-xs text-green-700/70 font-medium">
+                    {item.qtd} {isNaN(Number(item.qtd)) ? '' : 'un'}
+                  </span>
+                )}
+              </div>
+
               {item.comprado && (
-                <span className="text-xs text-green-700/70 font-medium">
-                  {/* Se for string e tiver kg ou g, não mostra 'un', se não, mostra */}
-                  {item.qtd} {isNaN(Number(item.qtd)) ? '' : 'un'}
+                <span className="font-mono font-black text-green-700 text-lg">
+                  R$ {item.total?.toFixed(2)}
                 </span>
               )}
             </div>
-
-            {item.comprado && (
-              <span className="font-mono font-black text-green-700 text-lg">
-                R$ {item.total?.toFixed(2)}
-              </span>
-            )}
-          </div>
-        ))}
+          ))
+        )}
       </div>
 
-      {/* FOOTER: BOTÃO DE ENCERRAR */}
-      <div className="fixed bottom-6 right-6 left-6 flex flex-col gap-2">
+      {/* FOOTER: BOTÃO DE ENCERRAR (MANTIDO) */}
+      <div className="fixed bottom-6 right-6 left-6 flex flex-col gap-2 z-20">
         <button 
           onClick={() => !sessao.finalizado && setConfirmarFinalizacao(true)}
           disabled={sessao.finalizado}
@@ -158,13 +193,12 @@ export default function EstouNoMercadoView() {
         </button>
       </div>
 
-      {/* NOVO MODAL COM TOGGLE QTD/PESO */}
+      {/* MODAIS (MANTIDOS - Código inalterado) */}
       {selecionado && !sessao.finalizado && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 z-[60]">
           <div className="bg-white w-full max-w-md rounded-t-[32px] sm:rounded-[32px] p-8 shadow-2xl">
             <h2 className="text-2xl font-black mb-6 text-slate-800">{selecionado.nome}</h2>
             
-            {/* TOGGLE */}
             <div className="flex bg-slate-100 p-1 rounded-xl mb-6">
               <button 
                 onClick={() => setModoModal('QTD')}
@@ -216,9 +250,8 @@ export default function EstouNoMercadoView() {
         </div>
       )}
 
-      {/* MODAL DE CONFIRMAÇÃO DE FINALIZAÇÃO (MANTIDO) */}
       {confirmarFinalizacao && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-6 z-[60]">
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-6 z-[70]">
           <div className="bg-white rounded-[32px] p-8 w-full max-w-sm text-center shadow-2xl">
             <div className="w-20 h-20 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mx-auto mb-6">
               <ShoppingCart size={40} />
