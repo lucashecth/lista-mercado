@@ -18,9 +18,12 @@ export default function ListaView() {
     });
   }, []);
 
+  // Lógica do Switch funcional
   const handleToggleAtivo = async (id: string, statusAtual: boolean) => {
     const novoStatus = !statusAtual;
-    setItens(itens.map(i => i.id === id ? { ...i, ativo: novoStatus } : i));
+    // Altera o visual na hora
+    setItens(prev => prev.map(i => i.id === id ? { ...i, ativo: novoStatus } : i));
+    // Grava na planilha
     await toggleItemAtivoAction(id, novoStatus);
   };
 
@@ -38,19 +41,48 @@ export default function ListaView() {
     setItens(itens.filter(i => i.id !== id));
   };
 
-  // Lógica de Arrastar e Soltar (Drag & Drop)
-  const handleDragStart = (index: number) => setIndiceArrastado(index);
-  const handleDragOver = (e: React.DragEvent) => e.preventDefault();
-  const handleDrop = async (indiceDestino: number) => {
-    if (indiceArrastado === null || indiceArrastado === indiceDestino) return;
+  // --- LÓGICA COMRPREENSIVA DE REORDENAÇÃO (MOUSE + TOQUE CELULAR) ---
+  const executarMudancaOrdem = async (origem: number, destino: number) => {
+    if (origem === destino || destino < 0 || destino >= itens.length) return;
+    
     const listaModificada = [...itens];
-    const [itemMovido] = listaModificada.splice(indiceArrastado, 1);
-    listaModificada.splice(indiceDestino, 0, itemMovido);
+    const [itemMovido] = listaModificada.splice(origem, 1);
+    listaModificada.splice(destino, 0, itemMovido);
 
     const dadosParaSalvar = listaModificada.map((item, i) => ({ id: item.id, ordem: i + 1 }));
     setItens(listaModificada.map((item, i) => ({ ...item, ordem: i + 1 })));
-    setIndiceArrastado(null);
+    
     await reordenarItensBase(dadosParaSalvar);
+  };
+
+  // Drag clássico (Desktop)
+  const handleDragStart = (index: number) => setIndiceArrastado(index);
+  const handleDragOver = (e: React.DragEvent) => e.preventDefault();
+  const handleDrop = (indexDestino: number) => {
+    if (indiceArrastado !== null) {
+      executarMudancaOrdem(indiceArrastado, indexDestino);
+      setIndiceArrastado(null);
+    }
+  };
+
+  // Drag por Toque (Mobile iPhone/Android)
+  const handleTouchStart = (index: number) => {
+    setIndiceArrastado(index);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent, indexOrigem: number) => {
+    const toque = e.changedTouches[0];
+    // Descobre qual elemento está abaixo do dedo no momento em que ele levanta da tela
+    const elementoNoPonto = document.elementFromPoint(toque.clientX, toque.clientY);
+    const cardAlvo = elementoNoPonto?.closest("[data-index]");
+    
+    if (cardAlvo) {
+      const indexDestino = parseInt(cardAlvo.getAttribute("data-index") || "");
+      if (!isNaN(indexDestino)) {
+        executarMudancaOrdem(indexOrigem, indexDestino);
+      }
+    }
+    setIndiceArrastado(null);
   };
 
   if (carregando) return (
@@ -83,21 +115,24 @@ export default function ListaView() {
         {itens.map((item, index) => (
           <div 
             key={item.id}
+            data-index={index} // Atributo crucial para a identificação do toque
             draggable
             onDragStart={() => handleDragStart(index)}
             onDragOver={handleDragOver}
             onDrop={() => handleDrop(index)}
-            className={`flex items-center gap-3 p-4 rounded-2xl border shadow-sm transition-all cursor-grab active:cursor-grabbing ${
+            onTouchStart={() => handleTouchStart(index)}
+            onTouchEnd={(e) => handleTouchEnd(e, index)}
+            className={`flex items-center gap-3 p-4 rounded-2xl border shadow-sm transition-all ${
               indiceArrastado === index ? 'opacity-30 border-blue-500 bg-slate-950' : 
-              item.ativo ? 'bg-slate-900 border-slate-800' : 'bg-slate-950 border-slate-900/50 opacity-60'
+              item.ativo ? 'bg-slate-900 border-slate-800' : 'bg-slate-950 border-slate-900/40 opacity-40'
             }`}
           >
             {/* Ícone de puxador visual */}
-            <div className="text-slate-600 pointer-events-none">
+            <div className="text-slate-600 touch-none">
               <GripVertical size={20} />
             </div>
 
-            {/* Switch Customizado */}
+            {/* Switch Customizado Funcional */}
             <button 
               onClick={() => handleToggleAtivo(item.id, item.ativo)}
               className={`w-12 h-6 shrink-0 rounded-full transition-colors relative flex items-center px-1 ${item.ativo ? 'bg-green-600' : 'bg-slate-700'}`}
@@ -106,7 +141,7 @@ export default function ListaView() {
             </button>
 
             {/* Nome do Item */}
-            <span className={`flex-1 font-semibold pointer-events-none ${item.ativo ? 'text-slate-200' : 'text-slate-500 line-through'}`}>
+            <span className={`flex-1 font-semibold ${item.ativo ? 'text-slate-200' : 'text-slate-600 line-through'}`}>
               {item.nome}
             </span>
 

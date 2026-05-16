@@ -103,14 +103,15 @@ export async function reordenarItensBase(itensAtualizados: { id: string, ordem: 
   revalidatePath('/lista');
 }
 
-// --- FUNÇÕES DO MERCADO (MODO COMPRA) ---
+// --- FUNÇÕES DO MERCADO (MODO COMPRA COM FILTRO DO SWITCH) ---
 
 export async function iniciarMercadoAction() {
   const doc = await conectar();
   const itensBase = await buscarListaBase();
   
-  // Filtra apenas o que está "ON" no Switch
+  // Lista de IDs que estão ligados (ON) na lista mestra
   const itensAtivos = itensBase.filter(i => i.ativo);
+  const idsAtivos = new Set(itensAtivos.map(i => i.id));
   
   const meses = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
   const agora = new Date();
@@ -131,6 +132,7 @@ export async function iniciarMercadoAction() {
     const rowsMercado = await mercadoSheet.getRows();
     const idsNoMercado = new Set(rowsMercado.map(r => r.get('Id')));
     
+    // Sincroniza de forma incremental apenas se houver um item novo ativado
     const novosFaltando = itensAtivos.filter(i => !idsNoMercado.has(i.id));
     if (novosFaltando.length > 0) {
       const novosDados = novosFaltando.map(i => ({
@@ -153,7 +155,7 @@ export async function iniciarMercadoAction() {
       preco: Number(r.get('Preco')) || 0,
       qtd: r.get('Qtd') || '0',
       total: Number(r.get('Total')?.toString().replace(',', '.')) || 0
-    })).filter(i => i.id)
+    })).filter(i => i.id && idsAtivos.has(i.id)) // CORREÇÃO: Filtra para exibir em tempo real apenas o que está ON
   };
 }
 
