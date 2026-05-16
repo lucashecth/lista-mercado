@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Trash2, ArrowUp, ArrowDown, Plus, Loader2, ArrowLeft, ToggleLeft, ToggleRight } from "lucide-react";
+import { Trash2, Plus, Loader2, ArrowLeft, GripVertical } from "lucide-react";
 import Link from "next/link";
 import { buscarListaBase, adicionarItemBase, removerItemBase, reordenarItensBase, toggleItemAtivoAction } from "../actions";
 
@@ -9,6 +9,7 @@ export default function ListaView() {
   const [itens, setItens] = useState<{id: string, nome: string, ordem: number, ativo: boolean}[]>([]);
   const [novoItem, setNovoItem] = useState("");
   const [carregando, setCarregando] = useState(true);
+  const [indiceArrastado, setIndiceArrastado] = useState<number | null>(null);
 
   useEffect(() => {
     buscarListaBase().then(dados => {
@@ -19,9 +20,7 @@ export default function ListaView() {
 
   const handleToggleAtivo = async (id: string, statusAtual: boolean) => {
     const novoStatus = !statusAtual;
-    // Update Local para ser instantâneo
     setItens(itens.map(i => i.id === id ? { ...i, ativo: novoStatus } : i));
-    // Update Google
     await toggleItemAtivoAction(id, novoStatus);
   };
 
@@ -39,14 +38,19 @@ export default function ListaView() {
     setItens(itens.filter(i => i.id !== id));
   };
 
-  const mover = async (index: number, direcao: 'sobe' | 'desce') => {
-    const novos = [...itens];
-    const target = direcao === 'sobe' ? index - 1 : index + 1;
-    if (target < 0 || target >= novos.length) return;
-    [novos[index], novos[target]] = [novos[target], novos[index]];
-    const paraSalvar = novos.map((item, i) => ({ id: item.id, ordem: i + 1 }));
-    setItens(novos.map((item, i) => ({ ...item, ordem: i + 1 })));
-    await reordenarItensBase(paraSalvar);
+  // Lógica de Arrastar e Soltar (Drag & Drop)
+  const handleDragStart = (index: number) => setIndiceArrastado(index);
+  const handleDragOver = (e: React.DragEvent) => e.preventDefault();
+  const handleDrop = async (indiceDestino: number) => {
+    if (indiceArrastado === null || indiceArrastado === indiceDestino) return;
+    const listaModificada = [...itens];
+    const [itemMovido] = listaModificada.splice(indiceArrastado, 1);
+    listaModificada.splice(indiceDestino, 0, itemMovido);
+
+    const dadosParaSalvar = listaModificada.map((item, i) => ({ id: item.id, ordem: i + 1 }));
+    setItens(listaModificada.map((item, i) => ({ ...item, ordem: i + 1 })));
+    setIndiceArrastado(null);
+    await reordenarItensBase(dadosParaSalvar);
   };
 
   if (carregando) return (
@@ -56,7 +60,7 @@ export default function ListaView() {
   );
 
   return (
-    <main className="min-h-screen bg-slate-950 p-4 pb-20">
+    <main className="min-h-screen bg-slate-950 p-4 pb-20 select-none">
       <div className="flex items-center gap-4 mb-6">
         <Link href="/" className="p-2 bg-slate-900 rounded-full text-slate-300">
           <ArrowLeft size={24} />
@@ -69,7 +73,7 @@ export default function ListaView() {
           value={novoItem} 
           onChange={e => setNovoItem(e.target.value)}
           placeholder="Adicionar produto..."
-          className="flex-1 p-4 rounded-2xl bg-slate-900 text-white border border-slate-800 placeholder-slate-500 focus:ring-2 focus:ring-blue-500"
+          className="flex-1 p-4 rounded-2xl bg-slate-900 text-white border border-slate-800 placeholder-slate-500 focus:ring-2 focus:ring-blue-500 text-lg"
           onKeyDown={e => e.key === 'Enter' && handleAdd()}
         />
         <button onClick={handleAdd} className="bg-blue-600 text-white p-4 rounded-2xl shadow-lg active:scale-95"><Plus /></button>
@@ -77,25 +81,42 @@ export default function ListaView() {
 
       <div className="space-y-3">
         {itens.map((item, index) => (
-          <div key={item.id} className={`flex items-center gap-3 p-4 rounded-2xl border transition-all ${item.ativo ? 'bg-slate-900 border-slate-800' : 'bg-slate-950 border-slate-900 opacity-50'}`}>
-            
+          <div 
+            key={item.id}
+            draggable
+            onDragStart={() => handleDragStart(index)}
+            onDragOver={handleDragOver}
+            onDrop={() => handleDrop(index)}
+            className={`flex items-center gap-3 p-4 rounded-2xl border shadow-sm transition-all cursor-grab active:cursor-grabbing ${
+              indiceArrastado === index ? 'opacity-30 border-blue-500 bg-slate-950' : 
+              item.ativo ? 'bg-slate-900 border-slate-800' : 'bg-slate-950 border-slate-900/50 opacity-60'
+            }`}
+          >
+            {/* Ícone de puxador visual */}
+            <div className="text-slate-600 pointer-events-none">
+              <GripVertical size={20} />
+            </div>
+
             {/* Switch Customizado */}
             <button 
               onClick={() => handleToggleAtivo(item.id, item.ativo)}
-              className={`w-12 h-6 rounded-full transition-colors relative flex items-center px-1 ${item.ativo ? 'bg-green-600' : 'bg-slate-700'}`}
+              className={`w-12 h-6 shrink-0 rounded-full transition-colors relative flex items-center px-1 ${item.ativo ? 'bg-green-600' : 'bg-slate-700'}`}
             >
               <div className={`w-4 h-4 bg-white rounded-full transition-transform ${item.ativo ? 'translate-x-6' : 'translate-x-0'}`} />
             </button>
 
-            <span className={`flex-1 font-semibold ${item.ativo ? 'text-slate-200' : 'text-slate-500'}`}>{item.nome}</span>
+            {/* Nome do Item */}
+            <span className={`flex-1 font-semibold pointer-events-none ${item.ativo ? 'text-slate-200' : 'text-slate-500 line-through'}`}>
+              {item.nome}
+            </span>
 
-            <div className="flex items-center gap-2">
-              <div className="flex flex-col gap-1">
-                <button onClick={() => mover(index, 'sobe')} className="text-slate-600 hover:text-blue-400"><ArrowUp size={16}/></button>
-                <button onClick={() => mover(index, 'desce')} className="text-slate-600 hover:text-blue-400"><ArrowDown size={16}/></button>
-              </div>
-              <button onClick={() => handleRemove(item.id)} className="text-red-900/50 hover:text-red-500 p-2"><Trash2 size={20}/></button>
-            </div>
+            {/* Lixeira */}
+            <button 
+              onClick={() => handleRemove(item.id)} 
+              className="text-red-900/60 hover:text-red-500 p-2 rounded-lg transition-colors"
+            >
+              <Trash2 size={20} />
+            </button>
           </div>
         ))}
       </div>
