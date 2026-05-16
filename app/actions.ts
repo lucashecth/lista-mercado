@@ -21,61 +21,59 @@ async function conectar() {
   return doc;
 }
 
-// --- FUNÇÕES DA LISTA BASE ---
-
 export async function buscarListaBase() {
   const doc = await conectar();
   const sheet = doc.sheetsByTitle['lista'];
   const rows = await sheet.getRows();
   
   const itens = [];
-  
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const nome = row.get('Item');
-    
-    // Ignora linhas totalmente em branco no fim da planilha
     if (!nome) continue;
     
     let id = row.get('Id');
     let ordem = row.get('Ordem');
+    let ativo = row.get('Ativo'); // Coluna nova!
     
-    // NOVIDADE 1: Se você adicionou o item direto na planilha e deixou ID ou Ordem vazios,
-    // o app percebe, cria as informações corretas e salva de volta na planilha automaticamente.
-    if (!id || !ordem) {
-      if (!id) {
-        id = `planilha_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-        row.set('Id', id);
-      }
-      if (!ordem) {
-        ordem = (i + 1).toString();
-        row.set('Ordem', ordem);
-      }
+    if (!id || !ordem || !ativo) {
+      if (!id) { id = `planilha_${Date.now()}_${i}`; row.set('Id', id); }
+      if (!ordem) { ordem = (i + 1).toString(); row.set('Ordem', ordem); }
+      if (!ativo) { ativo = 'SIM'; row.set('Ativo', 'SIM'); }
       await row.save();
     }
     
     itens.push({
-      id: id,
-      nome: nome,
-      ordem: Number(ordem) || 0
+      id,
+      nome,
+      ordem: Number(ordem) || 0,
+      ativo: ativo === 'SIM'
     });
   }
-  
   return itens.sort((a, b) => a.ordem - b.ordem);
+}
+
+export async function toggleItemAtivoAction(id: string, novoStatus: boolean) {
+  const doc = await conectar();
+  const sheet = doc.sheetsByTitle['lista'];
+  const rows = await sheet.getRows();
+  const row = rows.find(r => r.get('Id') === id);
+  if (row) {
+    row.set('Ativo', novoStatus ? 'SIM' : 'NÃO');
+    await row.save();
+  }
+  revalidatePath('/lista');
 }
 
 export async function adicionarItemBase(nome: string) {
   const doc = await conectar();
   const sheet = doc.sheetsByTitle['lista'];
   const rows = await sheet.getRows();
-  
-  // Limpa possíveis linhas em branco antes de calcular a nova ordem
-  const linhasValidas = rows.filter(r => r.get('Item'));
-  
   await sheet.addRow({ 
     Id: Date.now().toString(), 
     Item: nome, 
-    Ordem: (linhasValidas.length + 1).toString() 
+    Ordem: (rows.length + 1).toString(),
+    Ativo: 'SIM'
   });
   revalidatePath('/lista');
 }
@@ -103,13 +101,12 @@ export async function reordenarItensBase(itensAtualizados: { id: string, ordem: 
   revalidatePath('/lista');
 }
 
-// --- FUNÇÕES DO MERCADO (SINCRONIZAÇÃO INCREMENTAL) ---
-
 export async function iniciarMercadoAction() {
   const doc = await conectar();
-  
-  // Puxa a lista base já corrigindo e gerando IDs automáticos se necessário
   const itensBase = await buscarListaBase();
+  
+  // FILTRO CRUCIAL: Só leva para o mercado o que estiver ATIVO (ON)
+  const itensAtivos = itensBase.filter(i => i.ativo);
   
   const meses = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
   const agora = new Date();
@@ -117,51 +114,31 @@ export async function iniciarMercadoAction() {
 
   let mercadoSheet = doc.sheetsByTitle[nomeAba];
   
-  // Cenário A: Primeira vez abrindo o mercado no mês. Cria a aba e joga tudo lá.
   if (!mercadoSheet) {
     mercadoSheet = await doc.addSheet({ 
       title: nomeAba, 
       headerValues: ['Id', 'Item', 'Comprado', 'Preco', 'Qtd', 'Total', 'Mercado', 'Finalizado'] 
     });
-    
-    const novosDados = itensBase.map(i => ({
-      Id: i.id,
-      Item: i.nome,
-      Comprado: 'NÃO',
-      Preco: '0',
-      Qtd: '0',
-      Total: '0',
-      Mercado: '',
-      Finalizado: 'NÃO'
+    const novosDados = itensAtivos.map(i => ({
+      Id: i.id, Item: i.nome, Comprado: 'NÃO', Preco: '0', Qtd: '0', Total: '0', Mercado: '', Finalizado: 'NÃO'
     }));
-    
-    if (novosDados.length > 0) {
-      await mercadoSheet.addRows(novosDados);
-    }
+    if (novosDados.length > 0) await mercadoSheet.addRows(novosDados);
   } else {
-    // NOVIDADE 2: A aba do mês já existe, mas você adicionou produtos novos na base (pelo app ou planilha).
-    // O código compara o que já está na aba do mês com a lista base e adiciona apenas os novos de forma incremental!
     const rowsMercado = await mercadoSheet.getRows();
-    const idsExistentesNoMercado = new Set(rowsMercado.map(r => r.get('Id')));
+    const idsNoMercado = new Set(rowsMercado.map(r => r.get('Id')));
     
-    const itensNovosFaltando = itensBase.filter(i => !idsExistentesNoMercado.has(i.id));
+    // Sincroniza apenas os novos que foram marcados como ON na lista base
+    const novosFaltando = itensAtivos.filter(i => !idsNoMercado.has(i.id));
     
-    if (itensNovosFaltando.length > 0) {
-      const novosDados = itensNovosFaltando.map(i => ({
-        Id: i.id,
-        Item: i.nome,
-        Comprado: 'NÃO',
-        Preco: '0',
-        Qtd: '0',
-        Total: '0',
-        Mercado: rowsMercado[0]?.get('Mercado') || '',
-        Finalizado: rowsMercado[0]?.get('Finalizado') || 'NÃO'
+    if (novosFaltando.length > 0) {
+      const novosDados = novosFaltando.map(i => ({
+        Id: i.id, Item: i.nome, Comprado: 'NÃO', Preco: '0', Qtd: '0', Total: '0', 
+        Mercado: rowsMercado[0]?.get('Mercado') || '', Finalizado: rowsMercado[0]?.get('Finalizado') || 'NÃO'
       }));
       await mercadoSheet.addRows(novosDados);
     }
   }
 
-  // Busca as linhas prontas e atualizadas para renderizar na tela do celular
   const rows = await mercadoSheet.getRows();
   return {
     nomeAba,
@@ -183,7 +160,6 @@ export async function atualizarCompraAction(aba: string, id: string, dados: any)
   const sheet = doc.sheetsByTitle[aba];
   const rows = await sheet.getRows();
   const row = rows.find(r => r.get('Id') === id);
-  
   if (row) {
     row.set('Comprado', dados.comprado ? 'SIM' : 'NÃO');
     row.set('Preco', dados.preco || 0);
@@ -198,7 +174,6 @@ export async function finalizarCompraAction(aba: string, mercadoNome: string) {
   const doc = await conectar();
   const sheet = doc.sheetsByTitle[aba];
   const rows = await sheet.getRows();
-  
   for (const row of rows) {
     row.set('Finalizado', 'SIM');
     row.set('Mercado', mercadoNome);
