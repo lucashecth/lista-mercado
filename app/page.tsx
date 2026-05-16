@@ -2,8 +2,8 @@ import Link from 'next/link';
 
 export default function Home() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-6 bg-slate-50">
-      <h1 className="text-3xl font-bold mb-10 text-slate-800">Lista de Mercado</h1>
+    <main className="flex min-h-screen flex-col items-center justify-center p-6 bg-slate-950">
+      <h1 className="text-3xl font-bold mb-10 text-white">Lista de Mercado</h1>
       
       <div className="flex flex-col gap-4 w-full max-w-xs">
         <Link 
