@@ -38,7 +38,6 @@ export async function buscarListaBase() {
     let ordem = row.get('Ordem');
     let ativo = row.get('Ativo');
     
-    // Auto-ID e Auto-Ordem + Default para Ativo
     if (!id || !ordem || !ativo) {
       if (!id) { id = `planilha_${Date.now()}_${i}`; row.set('Id', id); }
       if (!ordem) { ordem = (i + 1).toString(); row.set('Ordem', ordem); }
@@ -76,7 +75,7 @@ export async function adicionarItemBase(nome: string) {
     Id: Date.now().toString(), 
     Item: nome, 
     Ordem: (rows.length + 1).toString(),
-    Ativo: 'SIM' // Item novo sempre nasce ligado
+    Ativo: 'SIM'
   });
   revalidatePath('/lista');
 }
@@ -104,13 +103,13 @@ export async function reordenarItensBase(itensAtualizados: { id: string, ordem: 
   revalidatePath('/lista');
 }
 
-// --- FUNÇÕES DO MERCADO (FILTRADO E SEGURO) ---
+// --- FUNÇÕES DO MERCADO (MODO COMPRA) ---
 
 export async function iniciarMercadoAction() {
   const doc = await conectar();
   const itensBase = await buscarListaBase();
   
-  // FILTRO: Só leva para o mercado o que estiver ATIVO (ON)
+  // Filtra apenas o que está "ON" no Switch
   const itensAtivos = itensBase.filter(i => i.ativo);
   
   const meses = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
@@ -119,18 +118,16 @@ export async function iniciarMercadoAction() {
 
   let mercadoSheet = doc.sheetsByTitle[nomeAba];
   
-  // Cenário A: Aba nova
   if (!mercadoSheet) {
     mercadoSheet = await doc.addSheet({ 
       title: nomeAba, 
-      headerValues: ['Id', 'Item', 'Comprado', 'Preco', 'Qtd', 'Total', 'Market', 'Finalizado'] 
+      headerValues: ['Id', 'Item', 'Comprado', 'Preco', 'Qtd', 'Total', 'Mercado', 'Finalizado'] 
     });
     const novosDados = itensAtivos.map(i => ({
-      Id: i.id, Item: i.nome, Comprado: 'NÃO', Preco: '0', Qtd: '0', Total: '0', Market: '', Finalizado: 'NÃO'
+      Id: i.id, Item: i.nome, Comprado: 'NÃO', Preco: '0', Qtd: '0', Total: '0', Mercado: '', Finalizado: 'NÃO'
     }));
     if (novosDados.length > 0) await mercadoSheet.addRows(novosDados);
   } else {
-    // Cenário B: Incremental (já existe a aba, mas tem itens ativos novos na base)
     const rowsMercado = await mercadoSheet.getRows();
     const idsNoMercado = new Set(rowsMercado.map(r => r.get('Id')));
     
@@ -138,7 +135,7 @@ export async function iniciarMercadoAction() {
     if (novosFaltando.length > 0) {
       const novosDados = novosFaltando.map(i => ({
         Id: i.id, Item: i.nome, Comprado: 'NÃO', Preco: '0', Qtd: '0', Total: '0', 
-        Market: rowsMercado[0]?.get('Market') || '', Finalizado: rowsMercado[0]?.get('Finalizado') || 'NÃO'
+        Mercado: rowsMercado[0]?.get('Mercado') || '', Finalizado: rowsMercado[0]?.get('Finalizado') || 'NÃO'
       }));
       await mercadoSheet.addRows(novosDados);
     }
@@ -147,7 +144,7 @@ export async function iniciarMercadoAction() {
   const rows = await mercadoSheet.getRows();
   return {
     nomeAba,
-    mercadoNome: rows[0]?.get('Market') || '',
+    mercadoNome: rows[0]?.get('Mercado') || '',
     finalizado: rows[0]?.get('Finalizado') === 'SIM',
     itens: rows.map(r => ({
       id: r.get('Id'),
@@ -170,7 +167,7 @@ export async function atualizarCompraAction(aba: string, id: string, dados: any)
     row.set('Preco', dados.preco || 0);
     row.set('Qtd', dados.qtd || 0);
     row.set('Total', dados.total !== undefined ? dados.total : 0);
-    if (dados.mercadoNome !== undefined) row.set('Market', dados.mercadoNome);
+    if (dados.mercadoNome !== undefined) row.set('Mercado', dados.mercadoNome);
     await row.save();
   }
 }
@@ -181,7 +178,7 @@ export async function finalizarCompraAction(aba: string, mercadoNome: string) {
   const rows = await sheet.getRows();
   for (const row of rows) {
     row.set('Finalizado', 'SIM');
-    row.set('Market', mercadoNome);
+    row.set('Mercado', mercadoNome);
     await row.save();
   }
 }
